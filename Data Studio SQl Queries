@@ -1,0 +1,222 @@
+----------------------------------------------------------------------------------------------------------------------
+## MCK_ GCP_Atos_Onboarding_Info
+
+SELECT 
+ member_Project.resource.data.name as project_name,
+member_Project.resource.data.lifecycleState as project_State,
+member_Project.resource.data.labels,
+member_Instance.resource.data.name as instance_name,
+member_Instance.resource.data.status,
+SPLIT(member_Instance.resource.data.zone, '/')[SAFE_OFFSET(ARRAY_LENGTH(SPLIT(member_Instance.resource.data.zone, '/')) - 1)] AS Zone,
+SPLIT(member_Instance.resource.data.machineType, '/')[SAFE_OFFSET(ARRAY_LENGTH(SPLIT(member_Instance.resource.data.machineType, '/')) - 1)] AS machineType,
+network.networkIP as IP_address,
+SPLIT(network.network, '/')[SAFE_OFFSET(ARRAY_LENGTH(SPLIT(network.network, '/')) - 1)] AS network,
+FROM `core-admin-prod-6598.asset_inventory.compute_googleapis_com_Instance` as member_Instance,
+UNNEST( member_Instance.resource.data.networkInterfaces ) AS network
+JOIN 
+`core-admin-prod-6598.asset_inventory.cloudresourcemanager_googleapis_com_Project` as member_Project
+ON member_Project.resource.data.projectNumber = SPLIT(member_Instance.resource.parent, '/')[SAFE_OFFSET(ARRAY_LENGTH(SPLIT(member_Instance.resource.parent, '/')) -1)]
+
+----------------------------------------------------------------------------------------------------------------------
+## MCK_ GCP_Instance Metadata
+
+SELECT
+  resource.DATA.name AS Instance_Name,
+  GCP_Network.networkIP AS IP_Address,
+  resource.DATA.status AS Status,
+  SPLIT(resource.data.zone, '/')[SAFE_OFFSET(ARRAY_LENGTH(SPLIT(resource.data.zone, '/')) - 3)] AS Project_ID,
+  REGEXP_EXTRACT(resource.DATA.machineType, r'/([^/]+)/?$') MachineType,
+  REGEXP_EXTRACT(resource.DATA.zone, r'/([^/]+)/?$') Zone,
+  REGEXP_EXTRACT(os, r'/([^/]+)/?$')operating_system,
+  REGEXP_EXTRACT(GCP_Network.network, r'/([^/]+)/?$') Network,
+  SUBSTR(resource.DATA.creationTimestamp,0,7) AS creationTimestamp
+FROM
+  `core-admin-prod-6598.asset_inventory.compute_googleapis_com_Instance`,
+  UNNEST( resource.DATA.disks ) AS GCP_licenses,
+  UNNEST( GCP_licenses.licenses) AS os,
+  UNNEST( resource.DATA.networkInterfaces ) AS GCP_Network
+
+----------------------------------------------------------------------------------------------------------------------
+## MCK_ GCP_Projects Metadata
+
+SELECT 
+resource.data.name as Project_Name,
+resource.data.projectId as Project_ID,
+resource.data.projectNumber as Project_Number,
+resource.data.lifecycleState as Project_Stats,
+  (SELECT param.value
+   FROM UNNEST(resource.data.labels) AS param
+   WHERE param.name ='country') AS country,
+   
+  (SELECT param.value
+   FROM UNNEST(resource.data.labels) AS param
+   WHERE param.name ='cost-center') AS Cost_Center,
+   
+     (SELECT param.value
+   FROM UNNEST(resource.data.labels) AS param
+   WHERE param.name = 'project-owner') AS Project_Owner ,
+
+     (SELECT param.value
+   FROM UNNEST(resource.data.labels) AS param
+   WHERE param.name = 'atos_onboarding') AS Atos_Onboarding ,
+   
+        (SELECT param.value
+   FROM UNNEST(resource.data.labels) AS param
+   WHERE param.name = 'tech-owner') AS Tech_Owner,
+   
+           (SELECT param.value
+   FROM UNNEST(resource.data.labels) AS param
+   WHERE param.name = 'bap-number') AS bap_Number,
+   
+           (SELECT param.value
+   FROM UNNEST(resource.data.labels) AS param
+   WHERE param.name = 'env') AS ENV,
+ 
+ resource.data.createTime as Create_Time,
+
+FROM `core-admin-prod-6598.asset_inventory.cloudresourcemanager_googleapis_com_Project`,
+
+UNNEST( resource.data.labels) AS GCP_labels
+
+  GROUP BY
+Project_Name,Project_ID,Project_Number, Project_Stats,Cost_Center,Project_Owner ,Tech_Owner,bap_Number,ENV,Create_Time,country,Atos_Onboarding
+ 
+ORDER BY Create_Time DESC
+
+----------------------------------------------------------------------------------------------------------------------
+## MCK_ GCP_Instance Backup Status
+
+SELECT
+  resource.DATA.name AS Instance_Name,
+  GCP_Network.networkIP AS IP_Address,
+  resource.DATA.status AS Status,
+resource.DATA.labels AS labels,
+  SPLIT(resource.data.zone, '/')[SAFE_OFFSET(ARRAY_LENGTH(SPLIT(resource.data.zone, '/')) - 3)] AS Project_ID,
+  REGEXP_EXTRACT(resource.DATA.machineType, r'/([^/]+)/?$') MachineType,
+  REGEXP_EXTRACT(resource.DATA.zone, r'/([^/]+)/?$') Zone,
+  REGEXP_EXTRACT(os, r'/([^/]+)/?$')operating_system,
+  REGEXP_EXTRACT(GCP_Network.network, r'/([^/]+)/?$') Network,
+  resource.DATA.creationTimestamp AS creationTimestamp
+FROM
+  `core-admin-prod-6598.asset_inventory.compute_googleapis_com_Instance`,
+  UNNEST( resource.DATA.disks ) AS GCP_licenses,
+  UNNEST( GCP_licenses.licenses) AS os,
+  UNNEST( resource.DATA.networkInterfaces ) AS GCP_Network
+
+----------------------------------------------------------------------------------------------------------------------
+## MCK_ GCP_Snapshot Report
+
+SELECT
+  snapshot_info.resource.DATA.name AS Snapshot_Name,
+  snapshot_info.resource.DATA.creationTimestamp AS CreationTime,
+  snapshot_info.resource.DATA.diskSizeGb AS Snapshot_SizeGb,
+  snapshot_info.resource.DATA.storageLocations AS Snapshot_Location,
+  disk_info.resource.DATA.name AS disk_name,
+  SPLIT(instance_deatils, '/')[SAFE_OFFSET(ARRAY_LENGTH(SPLIT(instance_deatils, '/')) -1)] AS Instance_Name,
+ 
+  SPLIT(disk_info.resource.data.zone, '/')[SAFE_OFFSET(ARRAY_LENGTH(SPLIT(disk_info.resource.data.zone, '/')) -1)] AS Instance_Zone,
+  SPLIT(disk_info.resource.data.zone, '/')[SAFE_OFFSET(ARRAY_LENGTH(SPLIT(disk_info.resource.data.zone, '/')) -3)] AS Project_Name,
+
+FROM
+  `core-admin-prod-6598.asset_inventory.compute_googleapis_com_Disk` AS disk_info
+LEFT JOIN
+  UNNEST(disk_info.resource.DATA.users) AS instance_deatils
+JOIN
+  `core-admin-prod-6598.asset_inventory.compute_googleapis_com_Snapshot` AS snapshot_info
+ON
+  disk_info.resource.DATA.id = snapshot_info.resource.DATA.sourceDiskId
+
+----------------------------------------------------------------------------------------------------------------------
+## MCK_ GCP_Interconnect_router_ Report
+
+SELECT
+ViolationOpenEventv1.resource.labels.project_id as Network_Project ,
+ViolationOpenEventv1.resource.labels.router_id as Router_Id,
+ViolationOpenEventv1.resource.labels.region as Region,
+ViolationOpenEventv1.timestamp as Start_Time,
+ViolationAutoResolveEventv1.timestamp as End_Time,
+ViolationOpenEventv1.labels.terse_message as OpenEvent,
+ViolationAutoResolveEventv1.labels.terse_message as ResolveEvent,
+ViolationOpenEventv1.labels.resource_name as Zone ,
+TIMESTAMP_DIFF(TIMESTAMP (ViolationAutoResolveEventv1.receiveTimestamp), TIMESTAMP (ViolationOpenEventv1.receiveTimestamp), MINUTE) as DownTime_Minute
+
+FROM
+  `cops-cloudmonus-prod-b71c.bgp_logs.monitoring_googleapis_com_ViolationOpenEventv1` AS ViolationOpenEventv1
+LEFT JOIN
+  `cops-cloudmonus-prod-b71c.bgp_logs.monitoring_googleapis_com_ViolationAutoResolveEventv1` AS ViolationAutoResolveEventv1
+ON
+  ViolationOpenEventv1.labels.violation_id = ViolationAutoResolveEventv1.labels.violation_id
+
+----------------------------------------------------------------------------------------------------------------------
+## GCP Asset Utilization Report
+
+SELECT 
+
+resource.data.name AS Instance_Name,GCP_Network.networkIP AS IP_Address,resource.data.status AS Status,REGEXP_EXTRACT(resource.data.machineType, r'/([^/]+)/?$') MachineType,
+REGEXP_EXTRACT(resource.data.zone, r'/([^/]+)/?$') Zone,
+REGEXP_EXTRACT(os, r'/([^/]+)/?$')operating_system,
+REGEXP_EXTRACT(GCP_Network.network, r'/([^/]+)/?$') Network,
+substr(resource.data.creationTimestamp,0,7) as creationTimestamp
+
+
+FROM `core-admin-prod-6598.asset_inventory.compute_googleapis_com_Instance`,
+      UNNEST( resource.data.disks ) AS GCP_licenses,
+      UNNEST( GCP_licenses.licenses) AS os,
+      UNNEST( resource.data.networkInterfaces ) AS GCP_Network
+
+SELECT 
+
+resource.data.name AS Instance_Name,GCP_Network.networkIP AS IP_Address,resource.data.status AS Status,REGEXP_EXTRACT(resource.data.machineType, r'/([^/]+)/?$') MachineType,
+REGEXP_EXTRACT(resource.data.zone, r'/([^/]+)/?$') Zone,
+REGEXP_EXTRACT(os, r'/([^/]+)/?$')operating_system,
+REGEXP_EXTRACT(GCP_Network.network, r'/([^/]+)/?$') Network,
+substr(resource.data.creationTimestamp,0,7) as creationTimestamp
+
+
+FROM `core-admin-prod-6598.asset_inventory.compute_googleapis_com_Instance`,
+      UNNEST( resource.data.disks ) AS GCP_licenses,
+      UNNEST( GCP_licenses.licenses) AS os,
+      UNNEST( resource.data.networkInterfaces ) AS GCP_Network
+
+SELECT
+  resource.data.name AS Instance_Name,
+  resource.data.status AS Status,
+  SPLIT(Lic, '/')[SAFE_OFFSET(ARRAY_LENGTH(SPLIT(resource.data.zone, '/')) - 0)] AS OS,
+ 
+ 
+FROM
+  `core-admin-prod-6598.asset_inventory.compute_googleapis_com_Instance`,
+  UNNEST( resource.data.disks ) AS GCP_licenses,
+  UNNEST( GCP_licenses.licenses) AS Lic 
+
+SELECT
+  resource.DATA.instanceType,
+  resource.DATA.serverCaCert.instance,
+  resource.DATA.databaseVersion,
+  db_address.ipAddress,
+  resource.DATA.settings.dataDiskSizeGb,
+  resource.DATA.region,
+  resource.DATA.settings.tier as Machine_Type,
+  resource.DATA.settings.backupConfiguration.enabled as backupConfiguration_enabled,
+  resource.DATA.settings.replicationType,
+  resource.DATA.backendType as DB_GEN,
+  resource.DATA.settings.locationPreference.zone as LocationPreference_Zone,
+  resource.DATA.connectionName,
+  resource.DATA.project,
+  substr(resource.DATA.serverCaCert.createTime,0,7) as creationTimestamp,
+FROM
+  `core-admin-prod-6598.asset_inventory.sqladmin_googleapis_com_Instance`
+JOIN
+  UNNEST( resource.DATA.ipAddresses ) AS db_address
+
+SELECT
+  resource.discovery_name,
+  resource.DATA.id as Bucket_name,
+  resource.DATA.locationType Location_type,
+  resource.DATA.timeCreated,
+  
+  substr(resource.location,1,2) as location,
+FROM
+  `core-admin-prod-6598.asset_inventory.storage_googleapis_com_Bucket`
+
+----------------------------------------------------------------------------------------------------------------------
